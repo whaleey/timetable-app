@@ -12,18 +12,18 @@ app.use(express.static(path.join(__dirname, 'public')));
 // 1. Password Verification (Flow Step 2)
 app.post('/api/login', (req, res) => {
     const { passcode } = req.body;
-    db.all("SELECT PassType FROM tbl_password WHERE OldValue = ?", [passcode], (err, rows) => {
+    db.get("SELECT PassType FROM tbl_password WHERE OldValue = ?", [passcode], (err, row) => {
         if (err) return res.status(500).json({ error: err.message });
-        if (rows.length > 0) {
-            return res.json({ access: rows[0].PassType }); // Returns 'admin' or 'public'
+        if (row) {
+            return res.json({ access: row.PassType });
         }
         res.status(401).json({ error: "Access Denied" });
     });
 });
 
-// 2. Fetch Appointments (Functions 1a & 1b)
+// 2. Fetch Appointments within 6 Months range (Functions 1a & 1b)
 app.get('/api/appointments', (req, res) => {
-    const { access, category } = queryStr = req.query;
+    const { access, category } = req.query;
     let query = "SELECT * FROM tbl_appointment WHERE Status != 'cancelled'";
     let params = [];
 
@@ -35,7 +35,7 @@ app.get('/api/appointments', (req, res) => {
     db.all(query, params, (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         
-        // Scrub detail context safely if user context is public
+        // Obfuscate appointment details for public view
         if (access !== 'admin') {
             rows = rows.map(item => ({
                 AppointmentID: item.AppointmentID,
@@ -46,7 +46,7 @@ app.get('/api/appointments', (req, res) => {
                 BeginMinute: item.BeginMinute,
                 EndHour: item.EndHour,
                 EndMinute: item.EndMinute,
-                Details: "" // Obfuscate text field
+                Details: "" 
             }));
         }
         res.json(rows);
@@ -58,7 +58,7 @@ app.post('/api/appointments', async (req, res) => {
     const { category, status, date, beginHour, beginMinute, endHour, endMinute, details } = req.body;
     try {
         const nextId = await generateNextID(category);
-        const todayStr = new Date().toISOString().slice(0,10).replace(/-/g,""); // yyyymmdd
+        const todayStr = new Date().toISOString().slice(0,10).replace(/-/g,"");
 
         db.run(`INSERT INTO tbl_appointment VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [nextId, category, status, date, beginHour, beginMinute, endHour, endMinute, details.substring(0, 500), todayStr],
@@ -87,7 +87,7 @@ app.put('/api/appointments/:id', (req, res) => {
     );
 });
 
-// 5. Update Password Options (Function 4)
+// 5. Update Password Option Match Rules (Function 4)
 app.post('/api/password/update', (req, res) => {
     const { passType, oldValue, newValue, confirmNewValue } = req.body;
     
@@ -102,20 +102,18 @@ app.post('/api/password/update', (req, res) => {
 
         db.run("UPDATE tbl_password SET OldValue = ?, NewValue = '' WHERE PassType = ?", [newValue, passType], (err) => {
             if (err) return res.status(500).json({ error: err.message });
-            res.json({ success: true, message: "Password updated!" });
+            res.json({ success: true });
         });
     });
 });
 
-// 6. Export Database Table to Excel File (.xlsx) (Function 5)
+// 6. Export Table (Function 5)
 app.get('/api/export', (req, res) => {
     db.all("SELECT * FROM tbl_appointment", [], (err, rows) => {
         if (err) return res.status(500).send("Export error");
-        
         const worksheet = xlsx.utils.json_to_sheet(rows);
         const workbook = xlsx.utils.book_new();
         xlsx.utils.book_append_sheet(workbook, worksheet, "Appointments");
-        
         const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
         res.setHeader('Content-Disposition', 'attachment; filename=tbl_appointment.xlsx');
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -123,4 +121,4 @@ app.get('/api/export', (req, res) => {
     });
 });
 
-app.listen(PORT, () => console.log(`App running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Server launched on port ${PORT}`));
