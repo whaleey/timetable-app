@@ -1,147 +1,34 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Timetable Web App</title>
-    <style>
-        :root { --primary: #333; --confirmed: #222; --proposed: #ffeb3b; }
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
-        body, html { width: 100%; height: 100%; display: flex; flex-direction: column; overflow: hidden; }
-        header { background: var(--primary); color: white; padding: 12px; display: flex; justify-content: space-between; align-items: center; z-index: 10; }
-        header button { padding: 6px 12px; background: crimson; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        .main-container { flex: 1; overflow-y: auto; padding: 15px; background: #f9f9f9; display: flex; flex-direction: column; }
-        .screen { display: none; height: 100%; width: 100%; }
-        .active { display: block !important; }
-        #auth-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
-        .form-group { margin-bottom: 12px; display: flex; flex-direction: column; width: 100%; max-width: 400px; }
-        .form-group label { margin-bottom: 4px; font-weight: bold; }
-        input, select, textarea { padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; width: 100%; }
-        button.btn { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; margin-top: 10px; }
-        button.btn-secondary { background: #6c757d; margin-left: 5px; }
-        .admin-nav { display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap; }
-        .admin-nav button { padding: 8px 12px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; }
-        .timetable-controls { margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
-        .grid-scroll { overflow: auto; flex: 1; border: 1px solid #ddd; background: #fff; }
-        .grid-table { display: grid; grid-template-columns: 80px repeat(7, 1fr); min-width: 700px; }
-        .grid-cell { border-bottom: 1px solid #eee; border-right: 1px solid #eee; padding: 6px; min-height: 60px; position: relative; font-size: 12px; }
-        .grid-header { background: #eee; font-weight: bold; text-align: center; position: sticky; top: 0; z-index: 2; padding: 10px 0; }
-        .time-col { background: #f1f1f1; font-weight: bold; text-align: center; }
-        .appt-card { border-radius: 4px; padding: 4px; margin-top: 2px; font-size: 11px; font-weight: bold; overflow: hidden; text-overflow: ellipsis; }
-        .status-confirmed { background: var(--confirmed); color: white; }
-        .status-proposed { background: var(--proposed); color: #333; border: 1px solid #ccc; }
-        .hidden { display: none !important; }
-        @media(max-width: 600px) { .grid-table { min-width: 600px; } }
-    </style>
-    <!-- SheetJS CDN allows downloading Excel files natively in browsers without Node.js libraries -->
-    <script type="module" src="app.js"></script>
-</head>
-<body>
+<!-- Locate your #admin-menu div inside index.html and append this button -->
+<div id="admin-menu" class="admin-nav hidden">
+    <!-- Existing buttons remain... -->
+    <button onclick="openStudentsView()">Students</button>
+</div>
 
-    <header id="app-header" class="hidden">
-        <h2 id="banner-title">Timetable</h2>
-        <button onclick="signOut()">Sign Out</button>
-    </header>
-
-    <div class="main-container">
-        <!-- PASSCODE INITIAL SCREEN -->
-        <div id="auth-screen" class="screen active">
-            <h2>Enter Passcode</h2>
-            <div class="form-group" style="margin-top:15px;">
-                <input type="password" id="passcode-input" placeholder="Enter Access Code">
-                <button class="btn" onclick="handleLogin()">Login</button>
+<!-- Paste this container directly underneath your #view-list container markup block -->
+<div id="view-students" class="screen">
+    <h3>Student Management</h3>
+    <div style="overflow-x:auto; background:white; border:1px solid #ddd; margin-top:10px; max-width:500px;">
+        <table id="students-table" style="width:100%; border-collapse:collapse; text-align:left; font-size:14px;">
+            <thead>
+                <tr style="background:#eee;">
+                    <th style="padding:8px; border-bottom:1px solid #ddd;">Student ID</th>
+                    <th style="padding:8px; border-bottom:1px solid #ddd;">Student Name</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+    
+    <!-- Add New Entry Input Form Row Section Matrix -->
+    <div style="margin-top:20px; padding:15px; background:#f1f1f1; border-radius:4px; max-width:500px;">
+        <h4 style="margin-bottom:10px;">Add New Student Entry</h4>
+        <form id="student-form" onsubmit="submitNewStudent(event)">
+            <div class="form-group">
+                <label for="stud-new-name">Student Name*</label>
+                <input type="text" id="stud-new-name" placeholder="Enter Full Student Name" required>
             </div>
-        </div>
-
-        <!-- APP INTERFACE SCREENS -->
-        <div id="app-content" class="screen">
-            <!-- ADMIN NAVIGATION HUB -->
-            <div id="admin-menu" class="admin-nav hidden">
-                <button onclick="switchScreen('view-overview-admin')">Overview (Admin)</button>
-                <button onclick="openInputScreen()">Input Appt</button>
-                <button onclick="openModifyScreen()">Modify Appt</button>
-                <button onclick="switchScreen('view-password')">Change Password</button>
-                <button onclick="openListView()">List View</button>
-            </div>
-
-            <!-- FUNCTION 1A: PUBLIC OVERVIEW -->
-            <div id="view-overview-public" class="screen">
-                <div class="timetable-controls">
-                    <button class="btn btn-secondary" onclick="navigateWeek(-1)">◀ Prev Week</button>
-                    <span id="public-week-range" style="font-weight:bold;"></span>
-                    <button class="btn btn-secondary" onclick="navigateWeek(1)">Next Week ▶</button>
-                </div>
-                <div class="grid-scroll"><div id="public-grid" class="grid-table"></div></div>
-            </div>
-
-            <!-- FUNCTION 1B: ADMIN OVERVIEW -->
-            <div id="view-overview-admin" class="screen">
-                <div class="timetable-controls">
-                    <div>
-                        <button class="btn btn-secondary" onclick="navigateWeek(-1)">◀ Prev</button>
-                        <span id="admin-week-range" style="font-weight:bold; margin: 0 10px;"></span>
-                        <button class="btn btn-secondary" onclick="navigateWeek(1)">Next ▶</button>
-                    </div>
-                    <div>
-                        <label>Filter Category: </label>
-                        <select id="admin-filter-category" onchange="renderAdminGrid()" style="width:120px; display:inline-block; padding:4px;">
-                            <option value="all">all</option>
-                            <option value="music">music</option>
-                            <option value="work">work</option>
-                            <option value="personal">personal</option>
-                            <option value="others">others</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="grid-scroll"><div id="admin-grid" class="grid-table"></div></div>
-            </div>
-
-            <!-- FUNCTION 2: INPUT APPOINTMENT -->
-            <div id="view-input" class="screen">
-                <h3>Input New Appointment</h3>
-                <form id="input-form" onsubmit="submitAppointment(event)">
-                    <div class="form-group"><label>Category*</label>
-                        <select id="in-category" required><option value="music">music</option><option value="work">work</option><option value="personal">personal</option><option value="others">others</option></select>
-                    </div>
-                    <div class="form-group"><label>Status*</label>
-                        <select id="in-status" required><option value="confirmed">confirmed</option><option value="proposed">proposed</option><option value="cancelled">cancelled</option></select>
-                    </div>
-                    <div class="form-group"><label>Student (Optional)</label>
-                        <input type="text" id="in-student-search" list="students-datalist" placeholder="Type to search name...">
-                        <datalist id="students-datalist"></datalist>
-                    </div>
-                    <div class="form-group"><label>Date*</label><input type="date" id="in-date" required></div>
-                    <div class="form-group"><label>Begin Time*</label>
-                        <div style="display:flex; gap:10px;">
-                            <select id="in-bhour" onchange="handleBeginTimeChange()"></select>
-                            <select id="in-bmin" onchange="handleBeginTimeChange()"></select>
-                        </div>
-                    </div>
-                    <div class="form-group"><label>End Time*</label>
-                        <div style="display:flex; gap:10px;">
-                            <select id="in-ehour"></select><select id="in-emin"></select>
-                        </div>
-                    </div>
-                    <div class="form-group" style="flex-direction:row; align-items:center; gap:10px;">
-                        <input type="checkbox" id="in-recurring" onchange="toggleRecurring()" style="width:auto;"> <label for="in-recurring">Recurring Weekly?</label>
-                    </div>
-                    <div class="form-group" id="recurring-times-group" style="display:none;"><label>Times Repeated Weekly*</label>
-                        <input type="number" id="in-times" min="1" value="1">
-                    </div>
-                    <div class="form-group"><label>Details</label>
-                        <textarea id="in-details" maxlength="500" rows="3"></textarea>
-                    </div>
-                    <button type="submit" class="btn">Submit</button>
-                    <button type="button" class="btn btn-secondary" onclick="switchScreen('view-overview-admin')">Back</button>
-                </form>
-            </div>
-
-            <!-- FUNCTION 3: MODIFY APPOINTMENT -->
-            <div id="view-modify" class="screen">
-                <h3>Modify Appointment</h3>
-                <div class="form-group"><label>Select Appointment</label>
-                    <select id="mod-select" onchange="populateModifyFields()"></select>
-                    <button type="button" class="btn btn-secondary" onclick="retrieveAllModifyRecords()" style="margin-top:5px; padding:5px; width:fit-content;">Retrieve all</button>
-                </div>
-                <form id="modify-form" onsubmit="saveModifiedAppointment(event)">
-                    <div class="form-group"><label>Category</label><select id="mod-category"><option value="music">music</option><option value="work">work</option><option value="personal">personal</option><option value="others">others</option></select></div>
+            <button type="submit" class="btn" style="margin-top:5px;">Save</button>
+            <button type="button" class="btn btn-secondary" onclick="switchScreen('view-overview-admin')" style="margin-top:5px;">Back</button>
+        </form>
+    </div>
+</div>
