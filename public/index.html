@@ -2,136 +2,172 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dynamic Timetable Engine</title>
-    <script src="https://tailwindcss.com"></script>
+    <title>Timetable Application</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f4f6f9; color: #333; }
+        .screen { display: none; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-top: 15px; }
+        .active { display: block; }
+        .grid-timetable { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin-top: 15px; }
+        .day-column { background: #eef1f6; padding: 10px; border-radius: 6px; min-height: 300px; }
+        .day-header { font-weight: bold; text-align: center; border-bottom: 2px solid #ccc; padding-bottom: 5px; margin-bottom: 10px; }
+        .card { padding: 8px; margin-bottom: 8px; border-radius: 4px; color: white; font-size: 13px; }
+        .status-confirmed { background: #000000; }
+        .status-proposed { background: #f1c40f; color: #000; }
+        .form-group { margin-bottom: 12px; }
+        label { display: block; font-weight: bold; margin-bottom: 4px; }
+        select, input, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { background: #2980b9; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; margin-right: 5px; }
+        button.secondary { background: #7f8c8d; }
+        .navbar { display: flex; gap: 10px; margin-bottom: 15px; }
+    </style>
 </head>
-<body class="bg-gray-100 text-gray-800 font-sans min-h-screen">
+<body>
 
-    <!-- Login Gateway Screen -->
-    <div id="auth-screen" class="flex items-center justify-center min-h-screen bg-gray-900">
-        <div class="bg-white p-8 rounded-xl shadow-xl max-w-sm w-full">
-            <h2 class="text-2xl font-bold mb-4 text-center text-gray-800">System Gateway</h2>
-            <input type="password" id="passcode-input" placeholder="Enter Authorization Code" class="w-full p-3 border border-gray-300 rounded-lg mb-4 text-center">
-            <button onclick="attemptLogin()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg transition">Authenticate</button>
-            <p id="auth-error" class="text-red-500 text-center mt-3 hidden"></p>
+    <h2>Weekly Timetable System</h2>
+    <div id="userBadge" style="font-weight: bold; margin-bottom: 10px;"></div>
+
+    <!-- Login Screen -->
+    <div id="screen-login" class="screen active">
+        <h3>Enter Passcode</h3>
+        <input type="password" id="login-passcode" placeholder="Enter password...">
+        <button onclick="handleLogin()" style="margin-top:10px;">Submit</button>
+    </div>
+
+    <!-- Admin Navigation Links Menu -->
+    <div id="admin-nav" class="navbar" style="display:none;">
+        <button onclick="switchScreen('screen-overview-admin')">Overview</button>
+        <button onclick="openInputScreen()">Input Appointment</button>
+        <button onclick="openModifyScreen()">Modify Appointment</button>
+        <button onclick="switchScreen('screen-password')">Change Password</button>
+        <button onclick="switchScreen('screen-export')">Export System</button>
+        <button onclick="location.reload()" class="secondary">Logout</button>
+    </div>
+
+    <!-- Function 1a: Public Overview -->
+    <div id="screen-overview-public" class="screen">
+        <h3>Public Timetable Overview</h3>
+        <div class="grid-timetable" id="timetable-public"></div>
+    </div>
+
+    <!-- Function 1b: Admin Overview -->
+    <div id="screen-overview-admin" class="screen">
+        <h3>Admin Timetable Dashboard</h3>
+        <div class="form-group" style="width: 200px;">
+            <label>Filter Category:</label>
+            <select id="admin-filter-cat" onchange="loadAdminTimetable()">
+                <option value="all">all</option>
+                <option value="music">music</option>
+                <option value="work">work</option>
+                <option value="personal">personal</option>
+                <option value="others">others</option>
+            </select>
+        </div>
+        <div class="grid-timetable" id="timetable-admin"></div>
+    </div>
+
+    <!-- Function 2: Input Screen -->
+    <div id="screen-input" class="screen">
+        <h3>Input New Appointment</h3>
+        <div class="form-group">
+            <label>Category</label>
+            <select id="in-cat"><option value="music">music</option><option value="work">work</option><option value="personal">personal</option><option value="others">others</option></select>
+        </div>
+        <div class="form-group">
+            <label>Status</label>
+            <select id="in-status"><option value="confirmed">confirmed</option><option value="proposed">proposed</option><option value="cancelled">cancelled</option></select>
+        </div>
+        <div class="form-group">
+            <label>Date</label>
+            <input type="date" id="in-date">
+        </div>
+        <div class="form-group">
+            <label>Begin Time (Hour / Minute)</label>
+            <select id="in-b-hr" style="width:48%; display:inline;"></select>
+            <select id="in-b-min" style="width:48%; display:inline;"></select>
+        </div>
+        <div class="form-group">
+            <label>End Time (Hour / Minute)</label>
+            <select id="in-e-hr" style="width:48%; display:inline;"></select>
+            <select id="in-e-min" style="width:48%; display:inline;"></select>
+        </div>
+        <div class="form-group">
+            <label>Details (Max 500 Characters)</label>
+            <textarea id="in-details" maxlength="500" rows="4"></textarea>
+        </div>
+        <button onclick="submitAppointment()">Submit Data</button>
+        <button class="secondary" onclick="switchScreen('screen-overview-admin')">Back</button>
+    </div>
+
+    <!-- Function 3: Modify Screen -->
+    <div id="screen-modify" class="screen">
+        <h3>Modify Existing Appointment</h3>
+        <div class="form-group">
+            <label>Select Appointment to Edit</label>
+            <select id="mod-select" onchange="populateModifyFields()"></select>
+        </div>
+        <div id="modify-fields-container">
+            <!-- Bound dynamic edit items copy logic inputs here -->
+            <div class="form-group">
+                <label>Category</label>
+                <select id="mod-cat"><option value="music">music</option><option value="work">work</option><option value="personal">personal</option><option value="others">others</option></select>
+            </div>
+            <div class="form-group">
+                <label>Status</label>
+                <select id="mod-status"><option value="confirmed">confirmed</option><option value="proposed">proposed</option><option value="cancelled">cancelled</option></select>
+            </div>
+            <div class="form-group">
+                <label>Date</label>
+                <input type="date" id="mod-date">
+            </div>
+            <div class="form-group">
+                <label>Begin Time</label>
+                <select id="mod-b-hr" style="width:48%; display:inline;"></select>
+                <select id="mod-b-min" style="width:48%; display:inline;"></select>
+            </div>
+            <div class="form-group">
+                <label>End Time</label>
+                <select id="mod-e-hr" style="width:48%; display:inline;"></select>
+                <select id="mod-e-min" style="width:48%; display:inline;"></select>
+            </div>
+            <div class="form-group">
+                <label>Details</label>
+                <textarea id="mod-details" maxlength="500" rows="4"></textarea>
+            </div>
+            <button onclick="saveModification()">Save Changes</button>
+            <button class="secondary" onclick="switchScreen('screen-overview-admin')">Back</button>
         </div>
     </div>
 
-    <!-- Main Workspace Container -->
-    <div id="app-workspace" class="hidden">
-        <!-- Control Header Navigation Bar -->
-        <nav class="bg-white shadow-md px-6 py-4 flex justify-between items-center">
-            <span class="text-xl font-bold text-indigo-600">Weekly Timetable System</span>
-            <div id="admin-controls" class="space-x-4 hidden">
-                <button onclick="switchView('overview')" class="text-gray-600 hover:text-indigo-600 font-medium">Overview</button>
-                <button onclick="switchView('input')" class="text-gray-600 hover:text-indigo-600 font-medium">Input Task</button>
-                <button onclick="switchView('modify')" class="text-gray-600 hover:text-indigo-600 font-medium">Modify Entry</button>
-                <button onclick="switchView('password')" class="text-gray-600 hover:text-indigo-600 font-medium">Security Keys</button>
-            </div>
-            <button onclick="logout()" class="text-sm font-semibold text-red-500 hover:underline">Exit Session</button>
-        </nav>
+    <!-- Function 4: Password Administration -->
+    <div id="screen-password" class="screen">
+        <h3>Change Account Password</h3>
+        <div class="form-group">
+            <label>PassType</label>
+            <select id="pw-type"><option value="admin">admin</option><option value="public">public</option></select>
+        </div>
+        <div class="form-group">
+            <label>Old Value</label>
+            <input type="password" id="pw-old">
+        </div>
+        <div class="form-group">
+            <label>New Value</label>
+            <input type="password" id="pw-new">
+        </div>
+        <div class="form-group">
+            <label>Confirm New Value</label>
+            <input type="password" id="pw-confirm">
+        </div>
+        <button onclick="updatePassword()">Update Password</button>
+        <button class="secondary" onclick="returnToDashboard()">Back</button>
+    </div>
 
-        <!-- Main Dynamic Functional Target Views -->
-        <main class="max-w-7xl mx-auto p-6">
-            
-            <!-- View 1: Overview Grid System (Function 1a / 1b) -->
-            <section id="view-overview" class="hidden space-y-6">
-                <h2 class="text-2xl font-bold tracking-tight text-gray-900">Dynamic Schedule Overview</h2>
-                <div class="grid grid-cols-7 gap-4 bg-white p-6 rounded-xl shadow border border-gray-100 overflow-x-auto min-w-[800px]">
-                    <!-- Sunday to Saturday Columns dynamically populated -->
-                    <div class="border-r last:border-0 border-gray-100 p-2"><h3 class="font-bold text-center text-red-500 mb-4">Sun</h3><div id="day-0" class="space-y-2"></div></div>
-                    <div class="border-r last:border-0 border-gray-100 p-2"><h3 class="font-bold text-center mb-4">Mon</h3><div id="day-1" class="space-y-2"></div></div>
-                    <div class="border-r last:border-0 border-gray-100 p-2"><h3 class="font-bold text-center mb-4">Tue</h3><div id="day-2" class="space-y-2"></div></div>
-                    <div class="border-r last:border-0 border-gray-100 p-2"><h3 class="font-bold text-center mb-4">Wed</h3><div id="day-3" class="space-y-2"></div></div>
-                    <div class="border-r last:border-0 border-gray-100 p-2"><h3 class="font-bold text-center mb-4">Thu</h3><div id="day-4" class="space-y-2"></div></div>
-                    <div class="border-r last:border-0 border-gray-100 p-2"><h3 class="font-bold text-center mb-4">Fri</h3><div id="day-5" class="space-y-2"></div></div>
-                    <div class="p-2"><h3 class="font-bold text-center mb-4">Sat</h3><div id="day-6" class="space-y-2"></div></div>
-                </div>
-            </section>
+    <!-- Function 5: Data Export Configuration -->
+    <div id="screen-export" class="screen">
+        <h3>Export Database Records</h3>
+        <p>Click below to download all recorded items as an active spreadsheet document format.</p>
+        <button onclick="window.open('/api/export')">Download tbl_appointment.xlsx</button>
+    </div>
 
-            <!-- View 2: Form Input Submission Interface (Function 2) -->
-            <section id="view-input" class="hidden max-w-lg mx-auto bg-white p-8 rounded-xl shadow border">
-                <h2 class="text-xl font-bold mb-6">Create New Timetable Appointment</h2>
-                <form id="appointment-form" onsubmit="handleCreate(event)" class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-semibold mb-1">Category</label>
-                        <select id="in-category" class="w-full p-2 border rounded" required>
-                            <option value="music">music</option><option value="work">work</option>
-                            <option value="personal">personal</option><option value="others">others</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-semibold mb-1">Status</label>
-                        <select id="in-status" class="w-full p-2 border rounded" required>
-                            <option value="proposed">proposed</option><option value="confirmed">confirmed</option>
-                            <option value="cancelled">cancelled</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-semibold mb-1">Date</label>
-                        <input type="date" id="in-date" class="w-full p-2 border rounded" required>
-                    </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-sm font-semibold mb-1">Begin Time</label>
-                            <div class="flex space-x-1"><select id="in-b-hr" class="w-full p-2 border rounded hr-select"></select><select id="in-b-mn" class="w-full p-2 border rounded mn-select"></select></div>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-semibold mb-1">End Time</label>
-                            <div class="flex space-x-1"><select id="in-e-hr" class="w-full p-2 border rounded hr-select"></select><select id="in-e-mn" class="w-full p-2 border rounded mn-select"></select></div>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-semibold mb-1">Details (Max 500 characters)</label>
-                        <textarea id="in-details" maxlength="500" class="w-full p-2 border rounded h-24" required></textarea>
-                    </div>
-                    <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-2 rounded shadow hover:bg-indigo-700 transition">Submit Entry</button>
-                </form>
-            </section>
-
-            <!-- View 3: Modify Management Control Engine (Function 3) -->
-            <section id="view-modify" class="hidden max-w-lg mx-auto bg-white p-8 rounded-xl shadow border">
-                <h2 class="text-xl font-bold mb-6">Modify Existing Appointment</h2>
-                <div class="mb-4">
-                    <label class="block text-sm font-semibold mb-1">Select Appointment ID</label>
-                    <select id="mod-id-selector" onchange="populateModificationForm()" class="w-full p-2 border rounded"><option value="">-- Choose ID --</option></select>
-                </div>
-                <form id="modify-form" onsubmit="handleModify(event)" class="space-y-4 hidden">
-                    <div>
-                        <label class="block text-sm font-semibold mb-1">Category</label>
-                        <select id="mod-category" class="w-full p-2 border rounded">
-                            <option value="music">music</option><option value="work">work</option>
-                            <option value="personal">personal</option><option value="others">others</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-semibold mb-1">Status</label>
-                        <select id="mod-status" class="w-full p-2 border rounded">
-                            <option value="proposed">proposed</option><option value="confirmed">confirmed</option>
-                            <option value="cancelled">cancelled</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-semibold mb-1">Date</label>
-                        <input type="date" id="mod-date" class="w-full p-2 border rounded">
-                    </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-sm font-semibold mb-1">Begin Time</label>
-                            <div class="flex space-x-1"><select id="mod-b-hr" class="w-full p-2 border rounded hr-select"></select><select id="mod-b-mn" class="w-full p-2 border rounded mn-select"></select></div>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-semibold mb-1">End Time</label>
-                            <div class="flex space-x-1"><select id="mod-e-hr" class="w-full p-2 border rounded hr-select"></select><select id="mod-e-mn" class="w-full p-2 border rounded mn-select"></select></div>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-semibold mb-1">Details (Max 500 characters)</label>
-                        <textarea id="mod-details" maxlength="500" class="w-full p-2 border rounded h-24"></textarea>
-                    </div>
-                    <button type="submit" class="w-full bg-green-600 text-white font-bold py-2 rounded shadow hover:bg-green-700 transition">Save Changes</button>
-                </form>
-            </section>
-
-            <!-- View 4: Security Password Control Updates (Function 4) -->
+    <script src="app.js"></script>
+</body>
+</html>

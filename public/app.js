@@ -1,174 +1,201 @@
-let currentRole = null;
+let currentAccess = null;
 let globalAppointments = [];
 
-// Populate standard 24H Hour/Minute fields at execution initialization
-document.addEventListener("DOMContentLoaded", () => {
-    document.querySelectorAll('.hr-select').forEach(sel => {
-        for(let i=0; i<24; i++) sel.innerHTML += `<option value="${String(i).padStart(2,'0')}">${String(i).padStart(2,'0')}</option>`;
-    });
-    document.querySelectorAll('.mn-select').forEach(sel => {
-        for(let i=0; i<60; i++) sel.innerHTML += `<option value="${String(i).padStart(2,'0')}">${String(i).padStart(2,'0')}</option>`;
-    });
-});
+// Initialize Time Pickers Dropdowns Options
+function populateTimeDropdowns(prefix) {
+    const hrSelectB = document.getElementById(`${prefix}-b-hr`);
+    const minSelectB = document.getElementById(`${prefix}-b-min`);
+    const hrSelectE = document.getElementById(`${prefix}-e-hr`);
+    const minSelectE = document.getElementById(`${prefix}-e-min`);
 
-async function attemptLogin() {
-    const code = document.getElementById('passcode-input').value;
-    const res = await fetch('/api/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ passcode: code })
-    });
-    const data = await res.json();
+    hrSelectB.innerHTML = hrSelectE.innerHTML = Array.from({length: 24}, (_, i) => 
+        `<option value="${String(i).padStart(2,'0')}">${String(i).padStart(2,'0')}</option>`).join('');
     
-    if (data.success) {
-        currentRole = data.role;
-        document.getElementById('auth-screen').classList.add('hidden');
-        document.getElementById('app-workspace').classList.remove('hidden');
+    minSelectB.innerHTML = minSelectE.innerHTML = Array.from({length: 60}, (_, i) => 
+        `<option value="${String(i).padStart(2,'0')}">${String(i).padStart(2,'0')}</option>`).join('');
+
+    // Default minutes to '00'
+    minSelectB.value = minSelectE.value = "00";
+
+    // Event binding constraints logic rules matching spec
+    hrSelectB.addEventListener('change', () => {
+        let bHr = parseInt(hrSelectB.value, 10);
+        let eHr = bHr === 23 ? 23 : bHr + 1;
+        hrSelectE.value = String(eHr).padStart(2, '0');
+    });
+
+    minSelectB.addEventListener('change', () => {
+        hrSelectE.dispatchEvent(new Event('change'));
+        minSelectE.value = minSelectB.value;
+    });
+}
+
+populateTimeDropdowns('in');
+populateTimeDropdowns('mod');
+
+function switchScreen(screenId) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById(screenId).classList.add('active');
+}
+
+function returnToDashboard() {
+    switchScreen(currentAccess === 'admin' ? 'screen-overview-admin' : 'screen-overview-public');
+}
+
+// Flow Step 2: Handle Route Gate Logic Verify Checking
+async function handleLogin() {
+    const passcode = document.getElementById('login-passcode').value;
+    const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ passcode })
+    });
+
+    if (res.ok) {
+        const data = await res.ok ? await res.json() : {};
+        currentAccess = data.access;
+        document.getElementById('userBadge').innerText = `Logged in as: ${currentAccess.toUpperCase()}`;
+        document.getElementById('screen-login').classList.remove('active');
         
-        if (currentRole === 'admin') {
-            document.getElementById('admin-controls').classList.remove('hidden');
+        if (currentAccess === 'admin') {
+            document.getElementById('admin-nav').style.display = 'flex';
+            switchScreen('screen-overview-admin');
+            loadAdminTimetable();
+        } else {
+            switchScreen('screen-overview-public');
+            loadPublicTimetable();
         }
-        switchView('overview');
     } else {
-        const errorEl = document.getElementById('auth-error');
-        errorEl.textContent = data.message;
-        errorEl.classList.remove('hidden');
+        alert("Access Denied");
     }
 }
 
-function switchView(viewId) {
-    // Structural Rule protection verification
-    if (currentRole === 'public' && viewId !== 'overview') return;
+// Build Layout Grid Starting at Sunday
+function renderTimetableGrid(containerId, appointments, showDetails) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-    ['overview', 'input', 'modify', 'password'].forEach(v => {
-        document.getElementById(`view-${v}`).classList.add('hidden');
+    days.forEach((dayName, index) => {
+        const col = document.createElement('div');
+        col.className = 'day-column';
+        col.innerHTML = `<div class="day-header">${dayName}</div>`;
+
+        // Filter and position events based on day of week match matching layout spec
+        appointments.forEach(app => {
+            const appDate = new Date(app.Date);
+            if (!isNaN(appDate.getTime()) && appDate.getDay() === index) {
+                const card = document.createElement('div');
+                card.className = `card status-${app.Status}`;
+                
+                if (showDetails) {
+                    card.innerHTML = `<b>[${app.AppointmentID}]</b><br>${app.BeginHour}:${app.BeginMinute} - ${app.EndHour}:${app.EndMinute}<br>${app.Details}`;
+                } else {
+                    card.innerHTML = `Status: ${app.Status}`;
+                }
+                col.appendChild(card);
+            }
+        });
+        container.appendChild(col);
     });
-    document.getElementById(`view-${viewId}`).classList.remove('hidden');
-    
-    if (viewId === 'overview') loadOverviewData();
-    if (viewId === 'modify') refreshModifyDropdown();
 }
 
-async function loadOverviewData() {
-    const res = await fetch('/api/appointments');
+async function loadPublicTimetable() {
+    const res = await fetch('/api/appointments?access=public');
+    const data = await res.json();
+    renderTimetableGrid('timetable-public', data, false);
+}
+
+async function loadAdminTimetable() {
+    const cat = document.getElementById('admin-filter-cat').value;
+    const res = await fetch(`/api/appointments?access=admin&category=${cat}`);
     globalAppointments = await res.json();
-    
-    // Clear timetable structural content nodes
-    for (let i = 0; i < 7; i++) document.getElementById(`day-${i}`).innerHTML = '';
-
-    globalAppointments.forEach(app => {
-        const appDate = new Date(app.Date);
-        const dayOfWeek = appDate.getDay(); // 0 is Sunday, 6 is Saturday
-        
-        const targetContainer = document.getElementById(`day-${dayOfWeek}`);
-        if (!targetContainer) return;
-
-        const formattedID = String(app.AppointmentID).padStart(6, '0');
-        const colorClass = app.Status === 'confirmed' ? 'bg-black text-white' : 'bg-yellow-400 text-black';
-
-        let innerContent = `<div class="font-bold text-xs">ID: ${formattedID}</div><div class="text-[10px] uppercase font-semibold">Status: ${app.Status}</div>`;
-        
-        // Admin privilege access override
-        if (currentRole === 'admin') {
-            innerContent += `
-                <div class="text-xs border-t border-gray-400/30 mt-1 pt-1 font-mono">${app.BeginHour}:${app.BeginMinute} - ${app.EndHour}:${app.EndMinute}</div>
-                <div class="text-xs italic truncate mt-0.5" title="${app.Details}">${app.Details}</div>
-                <div class="text-[9px] opacity-75">Cat: ${app.Category}</div>
-            `;
-        }
-
-        const card = document.createElement('div');
-        card.className = `p-2 rounded shadow-sm border text-left ${colorClass} text-xs space-y-0.5 break-words`;
-        card.innerHTML = innerContent;
-        targetContainer.appendChild(card);
-    });
+    renderTimetableGrid('timetable-admin', globalAppointments, true);
 }
 
-async function handleCreate(e) {
-    e.preventDefault();
+function openInputScreen() {
+    switchScreen('screen-input');
+}
+
+async function submitAppointment() {
     const payload = {
-        category: document.getElementById('in-category').value,
+        category: document.getElementById('in-cat').value,
         status: document.getElementById('in-status').value,
         date: document.getElementById('in-date').value,
         beginHour: document.getElementById('in-b-hr').value,
-        beginMinute: document.getElementById('in-b-mn').value,
+        beginMinute: document.getElementById('in-b-min').value,
         endHour: document.getElementById('in-e-hr').value,
-        endMinute: document.getElementById('in-e-mn').value,
+        endMinute: document.getElementById('in-e-min').value,
         details: document.getElementById('in-details').value
     };
 
+    if(!payload.date) return alert("Please select a date");
+
     const res = await fetch('/api/appointments', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(payload)
     });
-    const data = await res.json();
-    if (data.success) {
-        alert(`Appointment Created Successfully! Running Sequence ID: ${data.id}`);
-        document.getElementById('appointment-form').reset();
-        switchView('overview');
+    if(res.ok) {
+        alert("Appointment Created!");
+        returnToDashboard();
+        loadAdminTimetable();
     }
 }
 
-function refreshModifyDropdown() {
-    const selector = document.getElementById('mod-id-selector');
-    selector.innerHTML = '<option value="">-- Choose ID --</option>';
-    globalAppointments.forEach(app => {
-        const fmtId = String(app.AppointmentID).padStart(6, '0');
-        selector.innerHTML += `<option value="${app.AppointmentID}">${fmtId} (${app.Category})</option>`;
-    });
-    document.getElementById('modify-form').classList.add('hidden');
+// Function 3 Setup logic helper hooks
+function openModifyScreen() {
+    switchScreen('screen-modify');
+    const select = document.getElementById('mod-select');
+    select.innerHTML = '<option value="">-- Choose --</option>' + globalAppointments.map(app => 
+        `<option value="${app.AppointmentID}">${app.AppointmentID} - ${app.Date} (${app.Details.substring(0,15)}...)</option>`).join('');
 }
 
-function populateModificationForm() {
-    const selectId = document.getElementById('mod-id-selector').value;
-    if (!selectId) {
-        document.getElementById('modify-form').classList.add('hidden');
-        return;
-    }
-    const app = globalAppointments.find(a => a.AppointmentID == selectId);
-    if (!app) return;
+function populateModifyFields() {
+    const id = document.getElementById('mod-select').value;
+    const app = globalAppointments.find(a => a.AppointmentID === id);
+    if(!app) return;
 
-    document.getElementById('mod-category').value = app.Category;
+    document.getElementById('mod-cat').value = app.Category;
     document.getElementById('mod-status').value = app.Status;
     document.getElementById('mod-date').value = app.Date;
     document.getElementById('mod-b-hr').value = app.BeginHour;
-    document.getElementById('mod-b-mn').value = app.BeginMinute;
+    document.getElementById('mod-b-min').value = app.BeginMinute;
     document.getElementById('mod-e-hr').value = app.EndHour;
-    document.getElementById('mod-e-mn').value = app.EndMinute;
+    document.getElementById('mod-e-min').value = app.EndMinute;
     document.getElementById('mod-details').value = app.Details;
-
-    document.getElementById('modify-form').classList.remove('hidden');
 }
 
-async function handleModify(e) {
-    e.preventDefault();
-    const selectId = document.getElementById('mod-id-selector').value;
+async function saveModification() {
+    const id = document.getElementById('mod-select').value;
+    if(!id) return alert("Select an item first");
+
     const payload = {
-        category: document.getElementById('mod-category').value,
+        category: document.getElementById('mod-cat').value,
         status: document.getElementById('mod-status').value,
         date: document.getElementById('mod-date').value,
         beginHour: document.getElementById('mod-b-hr').value,
-        beginMinute: document.getElementById('mod-b-mn').value,
+        beginMinute: document.getElementById('mod-b-min').value,
         endHour: document.getElementById('mod-e-hr').value,
-        endMinute: document.getElementById('mod-e-mn').value,
+        endMinute: document.getElementById('mod-e-min').value,
         details: document.getElementById('mod-details').value
     };
 
-    const res = await fetch(`/api/appointments/${selectId}`, {
+    const res = await fetch(`/api/appointments/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(payload)
     });
-    const data = await res.json();
-    if(data.success) {
-        alert("Data updated and synced successfully!");
-        switchView('overview');
+
+    if (res.ok) {
+        alert("Changes Saved!");
+        returnToDashboard();
+        loadAdminTimetable();
     }
 }
 
-async function handlePasswordUpdate(e) {
-    e.preventDefault();
+// Function 4 password change updates logic verification run
+async function updatePassword() {
     const payload = {
         passType: document.getElementById('pw-type').value,
         oldValue: document.getElementById('pw-old').value,
@@ -176,29 +203,16 @@ async function handlePasswordUpdate(e) {
         confirmNewValue: document.getElementById('pw-confirm').value
     };
 
-    const res = await fetch('/api/password-update', {
+    const res = await fetch('/api/password/update', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(payload)
     });
-    const data = await res.json();
 
-    if(data.success) {
-        alert(data.message);
-        // Clear verification forms completely
-        document.getElementById('pw-old').value = '';
-        document.getElementById('pw-new').value = '';
-        document.getElementById('pw-confirm').value = '';
-        switchView('overview'); // Returns to function 1b automatically if admin, or 1a if public
+    if (res.ok) {
+        alert("Password updated!");
+        returnToDashboard();
     } else {
-        alert(data.message);
+        alert("Please check again");
     }
-}
-
-function logout() {
-    currentRole = null;
-    document.getElementById('passcode-input').value = '';
-    document.getElementById('admin-controls').classList.add('hidden');
-    document.getElementById('app-workspace').classList.add('hidden');
-    document.getElementById('auth-screen').classList.remove('hidden');
 }
