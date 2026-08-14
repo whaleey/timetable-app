@@ -3,7 +3,18 @@ export let currentWeekStart = new Date();
 
 export let appointments = JSON.parse(localStorage.getItem('tbl_appointment') || '[]');
 export let passwords = JSON.parse(localStorage.getItem('tbl_password') || '{"admin": "admin", "public": "public"}');
-export let students = JSON.parse(localStorage.getItem('tbl_student') || '[{"StudentID": "S101", "StudentName": "Alice Smith"},{"StudentID": "S102", "StudentName": "Bob Jones"},{"StudentID": "S103", "StudentName": "Charlie Brown"}]');
+// Replace the old students definition row line inside modules/state.js with this configuration block:
+export let students = JSON.parse(localStorage.getItem('tbl_student') || '[]');
+
+// If local storage is empty, initialize default mock data arrays instantly
+if (students.length === 0) {
+    students = [
+        { StudentID: 101, StudentName: "Test" }
+    ];
+}
+
+
+
 
 export function saveToStorage() {
     localStorage.setItem('tbl_appointment', JSON.stringify(appointments));
@@ -43,3 +54,6 @@ export function getFormattedWeekLabel() {
     end.setDate(end.getDate() + 6);
     return `${currentWeekStart.toISOString().split('T')[0]} to ${end.toISOString().split('T')[0]}`;
 }
+
+
+
