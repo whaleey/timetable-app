@@ -5,6 +5,8 @@ import { handleBeginTimeChange, toggleRecurring, submitAppointment } from './mod
 import { populateModifySelect, populateModifyFields, saveModifiedAppointment, setRetrieveAllModify } from './modules/func3.js';
 import { updatePassword } from './modules/func4.js';
 import { handleListFilterChange, renderListViewTable, downloadExcel } from './modules/func5.js';
+// Function 6 Import
+import { renderStudentsTable, submitNewStudent } from './modules/func6.js';
 
 document.addEventListener("DOMContentLoaded", () => {
     populateTimeDropdowns('in-bhour', 'in-bmin', 'in-ehour', 'in-emin');
@@ -12,6 +14,9 @@ document.addEventListener("DOMContentLoaded", () => {
     setSundayOfWeek(new Date());
     saveToStorage();
     attachGlobalEvents();
+    
+    // FIX 1: Explicitly force correct login screen landing constraints rule on system initialization
+    switchScreen('auth-screen');
 });
 
 function populateTimeDropdowns(bh, bm, eh, em) {
@@ -28,20 +33,37 @@ function populateTimeDropdowns(bh, bm, eh, em) {
         eHourSel.options.add(new Option(hStr, hStr));
     }
     for(let i=0; i<60; i++) {
-        let mStr = String(i).padStart(2, '0');
-        bMinSel.options.add(new Option(mStr, mStr));
-        eMinSel.options.add(new Option(mStr, mStr));
+        let hStr = String(i).padStart(2, '0');
+        bMinSel.options.add(new Option(hStr, hStr));
+        eMinSel.options.add(new Option(hStr, hStr));
     }
     bMinSel.value = "00"; eMinSel.value = "00";
 }
 
 function switchScreen(screenId) {
-    document.querySelectorAll('.main-container > .screen, #app-content > .screen').forEach(s => s.classList.remove('active'));
-    const screen = document.getElementById(screenId);
-    if (screen) screen.classList.add('active');
+    // Hide ALL screens everywhere first
+    document.querySelectorAll('.screen, .main-container > .screen, #app-content > .screen').forEach(s => {
+        s.classList.remove('active');
+        s.style.display = 'none';
+    });
+    
+    // Explicitly handle app content wrapper layout visibility bounds
+    const appContentWrapper = document.getElementById('app-content');
+    if (screenId !== 'auth-screen' && appContentWrapper) {
+        appContentWrapper.classList.add('active');
+        appContentWrapper.style.display = 'block';
+    }
+
+    const targetScreen = document.getElementById(screenId);
+    if (targetScreen) {
+        targetScreen.classList.add('active');
+        targetScreen.style.display = 'block';
+    }
     
     if (screenId === 'view-overview-public') renderPublicGrid();
     if (screenId === 'view-overview-admin') renderAdminGrid();
+    // Function 6 Screen Router Trigger
+    if (screenId === 'view-students') renderStudentsTable();
 }
 
 function navigateWeek(direction) {
@@ -64,6 +86,20 @@ function navigateWeek(direction) {
     else renderPublicGrid();
 }
 
+function updateStudentDatalists() {
+    const dl = document.getElementById('students-datalist');
+    const dlMod = document.getElementById('students-datalist-mod');
+    if (dl && dlMod) {
+        dl.innerHTML = ''; 
+        dlMod.innerHTML = '';
+        // FIX 2: Correctly reads the global variable safely exported out of your modules ecosystem
+        students.forEach(s => {
+            dl.options.add(new Option(s.StudentName, s.StudentName));
+            dlMod.options.add(new Option(s.StudentName, s.StudentName));
+        });
+    }
+}
+
 function handleLogin() {
     const passcodeEl = document.getElementById('passcode-input');
     if (!passcodeEl) return;
@@ -78,36 +114,38 @@ function handleLogin() {
         return;
     }
 
-    document.getElementById('auth-screen')?.classList.remove('active');
-    document.getElementById('app-header')?.classList.remove('hidden');
-    document.getElementById('app-content')?.classList.add('active');
-    
-    const dl = document.getElementById('students-datalist');
-    const dlMod = document.getElementById('students-datalist-mod');
-    if (dl && dlMod) {
-        dl.innerHTML = ''; dlMod.innerHTML = '';
-        students.forEach(s => {
-            dl.options.add(new Option(s.StudentName, s.StudentName));
-            dlMod.options.add(new Option(s.StudentName, s.StudentName));
-        });
+    // Unhide layout header structure frame safely
+    const header = document.getElementById('app-header');
+    if (header) {
+        header.classList.remove('hidden');
+        header.style.display = 'flex';
     }
+    
+    // Populate dropdown datalists on successful login
+    updateStudentDatalists();
 
     const adminMenu = document.getElementById('admin-menu');
     const bannerTitle = document.getElementById('banner-title');
 
     if (currentAccess.value === 'admin') {
-        adminMenu?.classList.remove('hidden');
+        if (adminMenu) {
+            adminMenu.classList.remove('hidden');
+            adminMenu.style.display = 'flex';
+        }
         if (bannerTitle) bannerTitle.innerText = "Timetable (Admin)";
         switchScreen('view-overview-admin');
     } else {
-        adminMenu?.classList.add('hidden');
+        if (adminMenu) {
+            adminMenu.classList.add('hidden');
+            adminMenu.style.display = 'none';
+        }
         if (bannerTitle) bannerTitle.innerText = "Timetable (Public)";
         switchScreen('view-overview-public');
     }
 }
 
 function attachGlobalEvents() {
-    // Bind everything to window scope for HTML onclick bindings to read cleanly
+    // Explicit global window level overrides for structural components mapping
     window.handleLogin = handleLogin;
     window.switchScreen = switchScreen;
     window.navigateWeek = navigateWeek;
@@ -118,9 +156,20 @@ function attachGlobalEvents() {
         currentAccess.value = null;
         const passcodeEl = document.getElementById('passcode-input');
         if (passcodeEl) passcodeEl.value = '';
-        document.getElementById('app-header')?.classList.add('hidden');
-        document.getElementById('app-content')?.classList.remove('active');
-        document.getElementById('auth-screen')?.classList.add('active');
+        
+        const header = document.getElementById('app-header');
+        if (header) {
+            header.classList.add('hidden');
+            header.style.display = 'none';
+        }
+        
+        const adminMenu = document.getElementById('admin-menu');
+        if (adminMenu) {
+            adminMenu.classList.add('hidden');
+            adminMenu.style.display = 'none';
+        }
+        
+        switchScreen('auth-screen');
     };
 
     window.renderAdminGrid = renderAdminGrid;
@@ -153,7 +202,18 @@ function attachGlobalEvents() {
     window.renderListViewTable = renderListViewTable;
     window.downloadExcel = downloadExcel;
 
-    // Attach form submit events directly
+    // Function 6 Window Scope Bindings
+    window.openStudentsView = () => {
+        switchScreen('view-students');
+    };
+    window.submitNewStudent = (e) => {
+        submitNewStudent(e, () => {
+            // Callback syncs changes back to input dropdown searches instantly
+            updateStudentDatalists();
+        });
+    };
+
+    // Direct structural override attachment bounds setup configuration rules handlers
     document.getElementById('input-form')?.addEventListener('submit', (e) => submitAppointment(e, () => switchScreen('view-overview-admin')));
     document.getElementById('modify-form')?.addEventListener('submit', (e) => saveModifiedAppointment(e, () => switchScreen('view-overview-admin')));
 }
