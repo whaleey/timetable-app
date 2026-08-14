@@ -36,9 +36,24 @@ function populateTimeDropdowns(bh, bm, eh, em) {
 }
 
 function switchScreen(screenId) {
-    document.querySelectorAll('.main-container > .screen, #app-content > .screen').forEach(s => s.classList.remove('active'));
-    const screen = document.getElementById(screenId);
-    if (screen) screen.classList.add('active');
+    // Hide ALL screens everywhere first
+    document.querySelectorAll('.screen, .main-container > .screen, #app-content > .screen').forEach(s => {
+        s.classList.remove('active');
+        s.style.display = 'none';
+    });
+    
+    // Explicitly handle app content wrapper layout visibility bounds
+    const appContentWrapper = document.getElementById('app-content');
+    if (screenId !== 'auth-screen' && appContentWrapper) {
+        appContentWrapper.classList.add('active');
+        appContentWrapper.style.display = 'block';
+    }
+
+    const targetScreen = document.getElementById(screenId);
+    if (targetScreen) {
+        targetScreen.classList.add('active');
+        targetScreen.style.display = 'block';
+    }
     
     if (screenId === 'view-overview-public') renderPublicGrid();
     if (screenId === 'view-overview-admin') renderAdminGrid();
@@ -78,9 +93,12 @@ function handleLogin() {
         return;
     }
 
-    document.getElementById('auth-screen')?.classList.remove('active');
-    document.getElementById('app-header')?.classList.remove('hidden');
-    document.getElementById('app-content')?.classList.add('active');
+    // Unhide layout header structure frame safely
+    const header = document.getElementById('app-header');
+    if (header) {
+        header.classList.remove('hidden');
+        header.style.display = 'flex';
+    }
     
     const dl = document.getElementById('students-datalist');
     const dlMod = document.getElementById('students-datalist-mod');
@@ -96,18 +114,24 @@ function handleLogin() {
     const bannerTitle = document.getElementById('banner-title');
 
     if (currentAccess.value === 'admin') {
-        adminMenu?.classList.remove('hidden');
+        if (adminMenu) {
+            adminMenu.classList.remove('hidden');
+            adminMenu.style.display = 'flex';
+        }
         if (bannerTitle) bannerTitle.innerText = "Timetable (Admin)";
         switchScreen('view-overview-admin');
     } else {
-        adminMenu?.classList.add('hidden');
+        if (adminMenu) {
+            adminMenu.classList.add('hidden');
+            adminMenu.style.display = 'none';
+        }
         if (bannerTitle) bannerTitle.innerText = "Timetable (Public)";
         switchScreen('view-overview-public');
     }
 }
 
 function attachGlobalEvents() {
-    // Bind everything to window scope for HTML onclick bindings to read cleanly
+    // Explicit global window level overrides for structural components mapping
     window.handleLogin = handleLogin;
     window.switchScreen = switchScreen;
     window.navigateWeek = navigateWeek;
@@ -118,9 +142,20 @@ function attachGlobalEvents() {
         currentAccess.value = null;
         const passcodeEl = document.getElementById('passcode-input');
         if (passcodeEl) passcodeEl.value = '';
-        document.getElementById('app-header')?.classList.add('hidden');
-        document.getElementById('app-content')?.classList.remove('active');
-        document.getElementById('auth-screen')?.classList.add('active');
+        
+        const header = document.getElementById('app-header');
+        if (header) {
+            header.classList.add('hidden');
+            header.style.display = 'none';
+        }
+        
+        const adminMenu = document.getElementById('admin-menu');
+        if (adminMenu) {
+            adminMenu.classList.add('hidden');
+            adminMenu.style.display = 'none';
+        }
+        
+        switchScreen('auth-screen');
     };
 
     window.renderAdminGrid = renderAdminGrid;
@@ -153,7 +188,7 @@ function attachGlobalEvents() {
     window.renderListViewTable = renderListViewTable;
     window.downloadExcel = downloadExcel;
 
-    // Attach form submit events directly
+    // Direct structural override attachment bounds setup configuration rules handlers
     document.getElementById('input-form')?.addEventListener('submit', (e) => submitAppointment(e, () => switchScreen('view-overview-admin')));
     document.getElementById('modify-form')?.addEventListener('submit', (e) => saveModifiedAppointment(e, () => switchScreen('view-overview-admin')));
 }
